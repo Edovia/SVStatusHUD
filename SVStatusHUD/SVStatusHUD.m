@@ -44,20 +44,6 @@
 
 static SVStatusHUD *sharedView = nil;
 
-- (void)dealloc {
-	
-	if(fadeOutTimer != nil)
-		[fadeOutTimer invalidate], [fadeOutTimer release], fadeOutTimer = nil;
-	
-    [[NSNotificationCenter defaultCenter] removeObserver:self];
-    
-    [hudView release];
-    [stringLabel release];
-    [imageView release];
-    
-    [super dealloc];
-}
-
 + (SVStatusHUD*)sharedView {
 	
 	if(sharedView == nil)
@@ -133,9 +119,9 @@ static SVStatusHUD *sharedView = nil;
 	}
     
     if(fadeOutTimer != nil)
-		[fadeOutTimer invalidate], [fadeOutTimer release], fadeOutTimer = nil;
+		[fadeOutTimer invalidate], fadeOutTimer = nil;
 	
-	fadeOutTimer = [[NSTimer scheduledTimerWithTimeInterval:duration target:self selector:@selector(dismiss) userInfo:nil repeats:NO] retain];
+	fadeOutTimer = [NSTimer scheduledTimerWithTimeInterval:duration target:self selector:@selector(dismiss) userInfo:nil repeats:NO];
     
     [self setNeedsDisplay];
 }
@@ -202,8 +188,8 @@ static SVStatusHUD *sharedView = nil;
 					 completion:^(BOOL finished){ 
                          if(sharedView.alpha == 0) {
                              [[NSNotificationCenter defaultCenter] removeObserver:sharedView];
-                             [overlayWindow release], overlayWindow = nil;
-                             [sharedView release], sharedView = nil;
+                             overlayWindow = nil;
+                             sharedView = nil;
                              
                              [[UIApplication sharedApplication].windows.lastObject makeKeyAndVisible];
                              
@@ -244,7 +230,7 @@ static SVStatusHUD *sharedView = nil;
 		stringLabel.textColor = [UIColor whiteColor];
 		stringLabel.backgroundColor = [UIColor clearColor];
 		stringLabel.adjustsFontSizeToFitWidth = YES;
-		stringLabel.textAlignment = UITextAlignmentCenter;
+		stringLabel.textAlignment = NSTextAlignmentCenter;
 		stringLabel.baselineAdjustment = UIBaselineAdjustmentAlignCenters;
 		stringLabel.font = [UIFont boldSystemFontOfSize:16];
 		stringLabel.shadowColor = [UIColor colorWithWhite:0 alpha:0.7];
@@ -288,10 +274,10 @@ static SVStatusHUD *sharedView = nil;
 - (void)setImage:(UIImage *)newImage {
     
     if(image)
-        [image release], image = nil;
+        image = nil;
     
     if(newImage) {
-        image = [newImage retain];
+        image = newImage;
         [self setNeedsDisplay];
     }
 }
