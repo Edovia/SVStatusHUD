@@ -8,10 +8,14 @@
 //
 
 #import "SVStatusHUD.h"
+#import "UIImage+ImageEffects.h"
 #import <QuartzCore/QuartzCore.h>
 
 #define SVStatusHUDVisibleDuration 1.0f
 #define SVStatusHUDFadeOutDuration 1.0f
+#define SVStatusHUDRingRadius 10
+
+#define MOTION_EFFECT_MULTIPLIER 9
 
 @interface SVStatusImage : UIView
 
@@ -24,7 +28,7 @@
 
 @property (nonatomic, retain) NSTimer *fadeOutTimer;
 @property (nonatomic, readonly) UIWindow *overlayWindow;
-@property (nonatomic, readonly) UIView *hudView;
+@property (nonatomic, readonly) UIImageView *hudView;
 @property (nonatomic, readonly) UILabel *stringLabel;
 @property (nonatomic, readonly) SVStatusImage *imageView;
 
@@ -87,6 +91,9 @@ static SVStatusHUD *sharedView = nil;
     return self;
 }
 
+- (BOOL)iOS7Style {
+    return [[[UIApplication sharedApplication].delegate window] respondsToSelector:@selector(drawViewHierarchyInRect:afterScreenUpdates:)];
+}
 
 - (void)setStatus:(NSString *)string {
 	
@@ -112,6 +119,44 @@ static SVStatusHUD *sharedView = nil;
 	[self setStatus:string];
     [self.overlayWindow makeKeyAndVisible];
     [self positionHUD:nil];
+    
+    if (!self.hudView.image && [self iOS7Style]) {
+        UIWindow* mainWindow = [[UIApplication sharedApplication].delegate window];
+        UIGraphicsBeginImageContextWithOptions(mainWindow.frame.size, YES, 0.0);
+        CGContextSetInterpolationQuality(UIGraphicsGetCurrentContext(), kCGInterpolationHigh);
+        [mainWindow drawViewHierarchyInRect:mainWindow.frame afterScreenUpdates:YES];
+        UIImage *snapshot = UIGraphicsGetImageFromCurrentImageContext();
+        UIGraphicsEndImageContext();
+        
+        CGFloat scale = [UIScreen mainScreen].scale;
+        CGRect frame = CGRectMake(self.hudView.frame.origin.x * scale,
+                                  self.hudView.frame.origin.y * scale,
+                                  self.hudView.frame.size.width * scale,
+                                  self.hudView.frame.size.height * scale);
+        
+        CGImageRef imageRef = CGImageCreateWithImageInRect([snapshot CGImage], frame);
+        UIImage* croppedSnapshot = [UIImage imageWithCGImage:imageRef scale:scale orientation:UIImageOrientationUp];
+        CGImageRelease(imageRef);
+        
+        UIImage* blurredSnapshot = [croppedSnapshot applyBlurWithRadius:5 tintColor:[UIColor colorWithWhite:0.97 alpha:0.82] saturationDeltaFactor:1.8 maskImage:nil];
+        
+        self.hudView.image = blurredSnapshot;
+        self.hudView.layer.cornerRadius = SVStatusHUDRingRadius;
+        self.hudView.layer.masksToBounds = YES;
+        
+        // Add the motion effect
+        UIInterpolatingMotionEffect *imageMotionEffectH = [[UIInterpolatingMotionEffect alloc] initWithKeyPath:@"center.x" type:UIInterpolatingMotionEffectTypeTiltAlongHorizontalAxis];
+        imageMotionEffectH.minimumRelativeValue = @(MOTION_EFFECT_MULTIPLIER);
+        imageMotionEffectH.maximumRelativeValue = @(-MOTION_EFFECT_MULTIPLIER);
+        
+        UIInterpolatingMotionEffect *imageMotionEffectV = [[UIInterpolatingMotionEffect alloc] initWithKeyPath:@"center.y" type:UIInterpolatingMotionEffectTypeTiltAlongVerticalAxis];
+        imageMotionEffectV.minimumRelativeValue = @(-MOTION_EFFECT_MULTIPLIER);
+        imageMotionEffectV.maximumRelativeValue = @(MOTION_EFFECT_MULTIPLIER);
+        
+        UIMotionEffectGroup *imageMotionEffectGroup = [UIMotionEffectGroup new];
+        imageMotionEffectGroup.motionEffects = @[imageMotionEffectH, imageMotionEffectV];
+        [self.hudView addMotionEffect:imageMotionEffectGroup];
+    }
     
 	if(self.alpha != 1) {
         [self registerNotifications];
@@ -213,8 +258,8 @@ static SVStatusHUD *sharedView = nil;
 
 - (UIView *)hudView {
     if(!hudView) {
-        hudView = [[UIView alloc] initWithFrame:CGRectZero];
-        hudView.layer.cornerRadius = 10;
+        hudView = [[UIImageView alloc] initWithFrame:CGRectZero];
+        hudView.layer.cornerRadius = SVStatusHUDRingRadius;
 		hudView.backgroundColor = [UIColor colorWithWhite:0 alpha:0.5];
         hudView.autoresizingMask = (UIViewAutoresizingFlexibleBottomMargin | UIViewAutoresizingFlexibleTopMargin |
                                     UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleLeftMargin);
@@ -227,14 +272,17 @@ static SVStatusHUD *sharedView = nil;
 - (UILabel *)stringLabel {
     if (stringLabel == nil) {
         stringLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 123, 160, 20)];
-		stringLabel.textColor = [UIColor whiteColor];
+		stringLabel.textColor = [self iOS7Style] ? [UIColor blackColor] : [UIColor whiteColor];
 		stringLabel.backgroundColor = [UIColor clearColor];
 		stringLabel.adjustsFontSizeToFitWidth = YES;
 		stringLabel.textAlignment = NSTextAlignmentCenter;
 		stringLabel.baselineAdjustment = UIBaselineAdjustmentAlignCenters;
 		stringLabel.font = [UIFont boldSystemFontOfSize:16];
-		stringLabel.shadowColor = [UIColor colorWithWhite:0 alpha:0.7];
-		stringLabel.shadowOffset = CGSizeMake(1, 1);
+        
+        if (![self iOS7Style]) {
+            stringLabel.shadowColor = [UIColor colorWithWhite:0 alpha:0.7];
+            stringLabel.shadowOffset = CGSizeMake(1, 1);
+        }
         stringLabel.numberOfLines = 0;
 		[self.hudView addSubview:stringLabel];
     }
@@ -245,10 +293,13 @@ static SVStatusHUD *sharedView = nil;
     if (imageView == nil) {
         imageView = [[SVStatusImage alloc] initWithFrame:CGRectMake(0, 0, 86, 86)];
         imageView.backgroundColor = [UIColor clearColor];
-        imageView.layer.shadowColor = [UIColor blackColor].CGColor;
-        imageView.layer.shadowRadius = 1;
-        imageView.layer.shadowOpacity = 0.5;
-        imageView.layer.shadowOffset = CGSizeMake(0, 1);
+        
+        if (![self iOS7Style]) {
+            imageView.layer.shadowColor = [UIColor blackColor].CGColor;
+            imageView.layer.shadowRadius = 1;
+            imageView.layer.shadowOpacity = 0.5;
+            imageView.layer.shadowOffset = CGSizeMake(0, 1);
+        }
 		[self.hudView addSubview:imageView];
     }
     return imageView;
