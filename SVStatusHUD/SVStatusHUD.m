@@ -9,6 +9,7 @@
 
 #import "SVStatusHUD.h"
 #import "UIImage+ImageEffects.h"
+#import "UIImage+Rotate.h"
 #import <QuartzCore/QuartzCore.h>
 
 #define SVStatusHUDVisibleDuration 1.0f
@@ -120,43 +121,18 @@ static SVStatusHUD *sharedView = nil;
     [self.overlayWindow makeKeyAndVisible];
     [self positionHUD:nil];
     
-    if (!self.hudView.image && [self iOS7Style]) {
-        UIWindow* mainWindow = [[UIApplication sharedApplication].delegate window];
-        UIGraphicsBeginImageContextWithOptions(mainWindow.frame.size, YES, 0.0);
-        CGContextSetInterpolationQuality(UIGraphicsGetCurrentContext(), kCGInterpolationHigh);
-        [mainWindow drawViewHierarchyInRect:mainWindow.frame afterScreenUpdates:YES];
-        UIImage *snapshot = UIGraphicsGetImageFromCurrentImageContext();
-        UIGraphicsEndImageContext();
-        
-        CGFloat scale = [UIScreen mainScreen].scale;
-        CGRect frame = CGRectMake(self.hudView.frame.origin.x * scale,
-                                  self.hudView.frame.origin.y * scale,
-                                  self.hudView.frame.size.width * scale,
-                                  self.hudView.frame.size.height * scale);
-        
-        CGImageRef imageRef = CGImageCreateWithImageInRect([snapshot CGImage], frame);
-        UIImage* croppedSnapshot = [UIImage imageWithCGImage:imageRef scale:scale orientation:UIImageOrientationUp];
-        CGImageRelease(imageRef);
-        
-        UIImage* blurredSnapshot = [croppedSnapshot applyBlurWithRadius:5 tintColor:[UIColor colorWithWhite:0.97 alpha:0.82] saturationDeltaFactor:1.8 maskImage:nil];
-        
-        self.hudView.image = blurredSnapshot;
-        self.hudView.layer.cornerRadius = SVStatusHUDRingRadius;
-        self.hudView.layer.masksToBounds = YES;
-        
-        // Add the motion effect
-        UIInterpolatingMotionEffect *imageMotionEffectH = [[UIInterpolatingMotionEffect alloc] initWithKeyPath:@"center.x" type:UIInterpolatingMotionEffectTypeTiltAlongHorizontalAxis];
-        imageMotionEffectH.minimumRelativeValue = @(MOTION_EFFECT_MULTIPLIER);
-        imageMotionEffectH.maximumRelativeValue = @(-MOTION_EFFECT_MULTIPLIER);
-        
-        UIInterpolatingMotionEffect *imageMotionEffectV = [[UIInterpolatingMotionEffect alloc] initWithKeyPath:@"center.y" type:UIInterpolatingMotionEffectTypeTiltAlongVerticalAxis];
-        imageMotionEffectV.minimumRelativeValue = @(-MOTION_EFFECT_MULTIPLIER);
-        imageMotionEffectV.maximumRelativeValue = @(MOTION_EFFECT_MULTIPLIER);
-        
-        UIMotionEffectGroup *imageMotionEffectGroup = [UIMotionEffectGroup new];
-        imageMotionEffectGroup.motionEffects = @[imageMotionEffectH, imageMotionEffectV];
-        [self.hudView addMotionEffect:imageMotionEffectGroup];
-    }
+    // Add the motion effect
+    UIInterpolatingMotionEffect *imageMotionEffectH = [[UIInterpolatingMotionEffect alloc] initWithKeyPath:@"center.x" type:UIInterpolatingMotionEffectTypeTiltAlongHorizontalAxis];
+    imageMotionEffectH.minimumRelativeValue = @(MOTION_EFFECT_MULTIPLIER);
+    imageMotionEffectH.maximumRelativeValue = @(-MOTION_EFFECT_MULTIPLIER);
+    
+    UIInterpolatingMotionEffect *imageMotionEffectV = [[UIInterpolatingMotionEffect alloc] initWithKeyPath:@"center.y" type:UIInterpolatingMotionEffectTypeTiltAlongVerticalAxis];
+    imageMotionEffectV.minimumRelativeValue = @(-MOTION_EFFECT_MULTIPLIER);
+    imageMotionEffectV.maximumRelativeValue = @(MOTION_EFFECT_MULTIPLIER);
+    
+    UIMotionEffectGroup *imageMotionEffectGroup = [UIMotionEffectGroup new];
+    imageMotionEffectGroup.motionEffects = @[imageMotionEffectH, imageMotionEffectV];
+    [self.hudView addMotionEffect:imageMotionEffectGroup];
     
 	if(self.alpha != 1) {
         [self registerNotifications];
@@ -181,7 +157,7 @@ static SVStatusHUD *sharedView = nil;
 
 
 - (void)positionHUD:(NSNotification*)notification {
-    
+    double animationDuration = 0.2f;
     UIInterfaceOrientation orientation = [[UIApplication sharedApplication] statusBarOrientation];
     CGRect orientationFrame = [UIScreen mainScreen].bounds;
     
@@ -218,8 +194,57 @@ static SVStatusHUD *sharedView = nil;
             break;
     } 
     
-    self.hudView.transform = CGAffineTransformMakeRotation(rotateAngle); 
+    if(notification) {
+        [UIView animateWithDuration:animationDuration
+                              delay:0
+                            options:UIViewAnimationOptionAllowUserInteraction
+                         animations:^{
+                             [self moveToPoint:newCenter rotateAngle:rotateAngle];
+                         } completion:^(BOOL finished) {
+                             [self updateBackdropImage:rotateAngle];
+                         }];
+    }
+    
+    else {
+        [self moveToPoint:newCenter rotateAngle:rotateAngle];
+        [self updateBackdropImage:rotateAngle];
+    }
+}
+
+- (void)moveToPoint:(CGPoint)newCenter rotateAngle:(CGFloat)angle {
+    self.hudView.transform = CGAffineTransformMakeRotation(angle);
     self.hudView.center = newCenter;
+}
+
+- (void)updateBackdropImage:(CGFloat)angle
+{
+    if (![self iOS7Style])
+        return;
+    
+    UIWindow* mainWindow = [[UIApplication sharedApplication].delegate window];
+    UIGraphicsBeginImageContextWithOptions(mainWindow.frame.size, YES, 0.0);
+    CGContextSetInterpolationQuality(UIGraphicsGetCurrentContext(), kCGInterpolationHigh);
+    [mainWindow drawViewHierarchyInRect:mainWindow.frame afterScreenUpdates:YES];
+    UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    
+    UIImage *snapshot = image;
+    
+    CGFloat scale = [UIScreen mainScreen].scale;
+    CGRect frame = CGRectMake(self.hudView.frame.origin.x * scale,
+                              self.hudView.frame.origin.y * scale,
+                              self.hudView.frame.size.width * scale,
+                              self.hudView.frame.size.height * scale);
+    
+    CGImageRef imageRef = CGImageCreateWithImageInRect([snapshot CGImage], frame);
+    UIImage* croppedSnapshot = [[UIImage imageWithCGImage:imageRef scale:scale orientation:UIImageOrientationUp] imageRotatedByRadians:-angle];
+    CGImageRelease(imageRef);
+    
+    UIImage* blurredSnapshot = [croppedSnapshot applyBlurWithRadius:5 tintColor:[UIColor colorWithWhite:0.97 alpha:0.82] saturationDeltaFactor:1.8 maskImage:nil];
+    
+    self.hudView.image = blurredSnapshot;
+    self.hudView.layer.cornerRadius = SVStatusHUDRingRadius;
+    self.hudView.layer.masksToBounds = YES;
 }
 
 - (void)dismiss {
@@ -313,7 +338,14 @@ static SVStatusHUD *sharedView = nil;
 
 - (void)drawRect:(CGRect)rect {
     CGRect bounds = self.bounds;
-    [[UIColor whiteColor] set];
+    BOOL iOS7 = [[[UIApplication sharedApplication].delegate window] respondsToSelector:@selector(drawViewHierarchyInRect:afterScreenUpdates:)];
+    
+    if (iOS7) {
+        [[UIColor blackColor] set];
+    }
+    else {
+        [[UIColor whiteColor] set];
+    }
     
     CGContextRef context = UIGraphicsGetCurrentContext();
     CGContextTranslateCTM(context, 0, self.frame.size.height);
