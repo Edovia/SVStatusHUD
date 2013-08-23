@@ -18,6 +18,8 @@
 
 #define MOTION_EFFECT_MULTIPLIER 9
 
+NSString* const SVStatusHUDDidFinishNotification = @"SVStatusHUDDidFinishNotification";
+
 @interface SVStatusImage : UIView
 
 @property (nonatomic, retain) UIImage *image;
@@ -263,6 +265,8 @@ static SVStatusHUD *sharedView = nil;
                              
                              [[UIApplication sharedApplication].windows.lastObject makeKeyAndVisible];
                              
+                             [[NSNotificationCenter defaultCenter] postNotificationName:SVStatusHUDDidFinishNotification
+                                                                                 object:nil];
                              // uncomment to make sure UIWindow is gone from app.windows
                              //NSLog(@"%@", [UIApplication sharedApplication].windows);
                          }

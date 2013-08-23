@@ -9,6 +9,8 @@
 
 #import <UIKit/UIKit.h>
 
+extern NSString* const SVStatusHUDDidFinishNotification;
+
 @interface SVStatusHUD : UIView
 
 + (void)showWithImage:(UIImage*)image;
