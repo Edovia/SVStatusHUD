@@ -285,7 +285,7 @@ static SVStatusHUD *sharedView = nil;
     return overlayWindow;
 }
 
-- (UIView *)hudView {
+- (UIImageView *)hudView {
     if(!hudView) {
         hudView = [[UIImageView alloc] initWithFrame:CGRectZero];
         hudView.layer.cornerRadius = SVStatusHUDRingRadius;
