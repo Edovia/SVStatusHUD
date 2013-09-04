@@ -27,6 +27,10 @@ NSString* const SVStatusHUDDidFinishNotification = @"SVStatusHUDDidFinishNotific
 @end
 
 
+@interface SVViewController : UIViewController
+@end
+
+
 @interface SVStatusHUD ()
 
 @property (nonatomic, retain) NSTimer *fadeOutTimer;
@@ -37,7 +41,6 @@ NSString* const SVStatusHUDDidFinishNotification = @"SVStatusHUDDidFinishNotific
 
 - (void)showWithImage:(UIImage*)image status:(NSString*)string duration:(NSTimeInterval)duration;
 - (void)setStatus:(NSString*)string;
-- (void)registerNotifications;
 - (void)positionHUD:(NSNotification*)notification;
 
 - (void)dismiss;
@@ -84,7 +87,7 @@ static SVStatusHUD *sharedView = nil;
 - (id)initWithFrame:(CGRect)frame {
 	
     if ((self = [super initWithFrame:frame])) {
-        [self.overlayWindow addSubview:self];
+        [self.overlayWindow.rootViewController.view addSubview:self];
         self.backgroundColor = [UIColor clearColor];
         self.userInteractionEnabled = NO;
 		self.alpha = 0;
@@ -116,7 +119,7 @@ static SVStatusHUD *sharedView = nil;
 
 
 - (void)showWithImage:(UIImage *)image status:(NSString *)string duration:(NSTimeInterval)duration {
-	
+
 	self.imageView.image = image;
     
 	[self setStatus:string];
@@ -137,7 +140,6 @@ static SVStatusHUD *sharedView = nil;
     [self.hudView addMotionEffect:imageMotionEffectGroup];
     
 	if(self.alpha != 1) {
-        [self registerNotifications];
 		self.alpha = 1;
 	}
     
@@ -147,14 +149,6 @@ static SVStatusHUD *sharedView = nil;
 	fadeOutTimer = [NSTimer scheduledTimerWithTimeInterval:duration target:self selector:@selector(dismiss) userInfo:nil repeats:NO];
     
     [self setNeedsDisplay];
-}
-
-
-- (void)registerNotifications {
-    [[NSNotificationCenter defaultCenter] addObserver:self 
-                                             selector:@selector(positionHUD:) 
-                                                 name:UIApplicationDidChangeStatusBarOrientationNotification 
-                                               object:nil];  
 }
 
 
@@ -169,52 +163,42 @@ static SVStatusHUD *sharedView = nil;
         orientationFrame.size.height = temp;
     }
     
-    CGFloat activeHeight = orientationFrame.size.height;
-    
-    CGFloat posY = floor(activeHeight*0.52);
-    CGFloat posX = orientationFrame.size.width/2;
-    
-    CGPoint newCenter;
     CGFloat rotateAngle;
-    
-    switch (orientation) { 
+    switch (orientation) {
         case UIInterfaceOrientationPortraitUpsideDown:
             rotateAngle = M_PI; 
-            newCenter = CGPointMake(posX, orientationFrame.size.height-posY);
             break;
         case UIInterfaceOrientationLandscapeLeft:
             rotateAngle = -M_PI/2.0f;
-            newCenter = CGPointMake(posY, posX);
             break;
         case UIInterfaceOrientationLandscapeRight:
             rotateAngle = M_PI/2.0f;
-            newCenter = CGPointMake(orientationFrame.size.height-posY, posX);
             break;
         default: // as UIInterfaceOrientationPortrait
             rotateAngle = 0.0;
-            newCenter = CGPointMake(posX, posY);
             break;
-    } 
+    }
+    
+    UIView *parentView =  self.overlayWindow.rootViewController.view;
+    CGPoint newCenter = CGPointMake(CGRectGetMidX(parentView.bounds), CGRectGetMidY(parentView.bounds));
     
     if(notification) {
         [UIView animateWithDuration:animationDuration
                               delay:0
                             options:UIViewAnimationOptionAllowUserInteraction
                          animations:^{
-                             [self moveToPoint:newCenter rotateAngle:rotateAngle];
+                             [self moveToPoint:newCenter];
                          } completion:^(BOOL finished) {
                              [self updateBackdropImage:rotateAngle];
                          }];
     }
-    
     else {
-        [self moveToPoint:newCenter rotateAngle:rotateAngle];
+        [self moveToPoint:newCenter];
         [self updateBackdropImage:rotateAngle];
     }
 }
 
-- (void)moveToPoint:(CGPoint)newCenter rotateAngle:(CGFloat)angle {
-    self.hudView.transform = CGAffineTransformMakeRotation(angle);
+- (void)moveToPoint:(CGPoint)newCenter {
     self.hudView.center = newCenter;
 }
 
@@ -230,16 +214,13 @@ static SVStatusHUD *sharedView = nil;
     UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
     UIGraphicsEndImageContext();
     
-    UIImage *snapshot = image;
+    UIImage *snapshot = [image imageRotatedByRadians:-angle];
     
     CGFloat scale = [UIScreen mainScreen].scale;
-    CGRect frame = CGRectMake(self.hudView.frame.origin.x * scale,
-                              self.hudView.frame.origin.y * scale,
-                              self.hudView.frame.size.width * scale,
-                              self.hudView.frame.size.height * scale);
+    CGRect frame = CGRectApplyAffineTransform(self.hudView.frame, CGAffineTransformMakeScale(scale, scale));
     
     CGImageRef imageRef = CGImageCreateWithImageInRect([snapshot CGImage], frame);
-    UIImage* croppedSnapshot = [[UIImage imageWithCGImage:imageRef scale:scale orientation:UIImageOrientationUp] imageRotatedByRadians:-angle];
+    UIImage* croppedSnapshot = [UIImage imageWithCGImage:imageRef scale:scale orientation:UIImageOrientationUp];
     CGImageRelease(imageRef);
     
     UIImage* blurredSnapshot = [croppedSnapshot applyBlurWithRadius:5 tintColor:[UIColor colorWithWhite:0.97 alpha:0.82] saturationDeltaFactor:1.8 maskImage:nil];
@@ -281,6 +262,7 @@ static SVStatusHUD *sharedView = nil;
         overlayWindow.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         overlayWindow.backgroundColor = [UIColor clearColor];
         overlayWindow.userInteractionEnabled = NO;
+        overlayWindow.rootViewController = [[SVViewController alloc] init];
     }
     return overlayWindow;
 }
@@ -289,10 +271,11 @@ static SVStatusHUD *sharedView = nil;
     if(!hudView) {
         hudView = [[UIImageView alloc] initWithFrame:CGRectZero];
         hudView.layer.cornerRadius = SVStatusHUDRingRadius;
+        hudView.layer.masksToBounds = YES;
 		hudView.backgroundColor = [UIColor colorWithWhite:0 alpha:0.5];
         hudView.autoresizingMask = (UIViewAutoresizingFlexibleBottomMargin | UIViewAutoresizingFlexibleTopMargin |
                                     UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleLeftMargin);
-        
+
         [self addSubview:hudView];
     }
     return hudView;
@@ -367,6 +350,45 @@ static SVStatusHUD *sharedView = nil;
         image = newImage;
         [self setNeedsDisplay];
     }
+}
+
+@end
+
+
+@implementation SVViewController
+
+- (BOOL)prefersStatusBarHidden
+{
+    return YES;
+}
+
+- (void)viewDidLoad
+{
+    [super viewDidLoad];
+    self.view.backgroundColor = [UIColor clearColor];
+}
+
+- (void)didRotateFromInterfaceOrientation:(UIInterfaceOrientation)fromInterfaceOrientation
+{
+    UIInterfaceOrientation orientation = [[UIApplication sharedApplication] statusBarOrientation];
+    CGFloat rotateAngle;
+    
+    switch (orientation) {
+        case UIInterfaceOrientationPortraitUpsideDown:
+            rotateAngle = M_PI;
+            break;
+        case UIInterfaceOrientationLandscapeLeft:
+            rotateAngle = -M_PI/2.0f;
+            break;
+        case UIInterfaceOrientationLandscapeRight:
+            rotateAngle = M_PI/2.0f;
+            break;
+        default: // as UIInterfaceOrientationPortrait
+            rotateAngle = 0.0;
+            break;
+    }
+
+    [[SVStatusHUD sharedView] updateBackdropImage:rotateAngle];
 }
 
 @end
